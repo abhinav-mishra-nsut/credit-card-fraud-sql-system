@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+*.csv
+*.xlsx
+*.zip
+*.sql.bak
+*.dump
+*.env
