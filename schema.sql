@@ -73,8 +73,10 @@ WITH spend_threshold AS (
 SELECT * FROM spend_threshold 
 WHERE amt > 3 * historical_avg_spend;
 
+-- Creating a View for a summarized distinction of our data
+
 CREATE VIEW daily_fraud_dashboard AS
-WITH VelocityStaging AS (
+WITH TransactionAnalytics AS (
     SELECT 
         t.trans_id,
         t.cc_num,
@@ -83,10 +85,13 @@ WITH VelocityStaging AS (
         t.merchant_name,
         t.amt,
         t.trans_date_time,
+        -- Metric 1: Time since last swipe (Velocity)
         EXTRACT(EPOCH FROM (t.trans_date_time - LAG(t.trans_date_time, 1) OVER (
             PARTITION BY t.cc_num 
             ORDER BY t.trans_date_time
-        ))) / 60 AS minutes_since_last_trans
+        ))) / 60 AS minutes_since_last_trans,
+        -- Metric 2: Historical Average Spend (Spike Detection)
+        AVG(t.amt) OVER(PARTITION BY t.cc_num) AS historical_avg_spend
     FROM transactions t
     JOIN customers c ON t.cc_num = c.cc_num
 )
@@ -97,11 +102,14 @@ SELECT
     job,
     merchant_name,
     amt,
-    trans_date_time,
+    historical_avg_spend,
+    ROUND((amt / NULLIF(historical_avg_spend, 0))::numeric, 1) || 'x Avg' AS spend_variance,
     ROUND(minutes_since_last_trans::numeric, 2) AS minutes_since_last_swipe
-FROM VelocityStaging
-WHERE minutes_since_last_trans < 10 
-  AND minutes_since_last_trans IS NOT NULL;
+FROM TransactionAnalytics
+WHERE 
+    (minutes_since_last_trans < 10 AND minutes_since_last_trans IS NOT NULL)
+    OR 
+    (amt > 3 * historical_avg_spend);
 
 SELECT * FROM daily_fraud_dashboard LIMIT 10;
 
